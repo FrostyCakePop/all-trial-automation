@@ -4,4 +4,4 @@ pandas
 faker
 undetected-chromedriver
 requests
-setuptools
+setuptools==69.2.0
