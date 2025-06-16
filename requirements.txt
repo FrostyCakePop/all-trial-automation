@@ -1,0 +1,7 @@
+streamlit
+selenium
+pandas
+faker
+undetected-chromedriver
+requests
+setuptools
