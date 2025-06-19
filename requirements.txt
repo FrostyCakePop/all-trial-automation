@@ -5,3 +5,4 @@ faker
 undetected-chromedriver
 requests
 setuptools==69.2.0
+PyGithub==1.59.0
