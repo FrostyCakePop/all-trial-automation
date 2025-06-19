@@ -1,45 +1,29 @@
 import streamlit as st
-import subprocess
-import sys
+from utils_github import load_csv
 
-# Page configuration
-st.set_page_config(
-    page_title="Email Warming System",
-    page_icon="📧",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Email Warming System", page_icon="📧", layout="wide")
 
-# PWA support
-st.markdown("""
-<link rel="manifest" href="manifest.json">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#2196F3">
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js');
-}
-</script>
-""", unsafe_allow_html=True)
-
-# Navigation sidebar
 st.sidebar.title("📧 Email Warming System")
 page = st.sidebar.selectbox(
-    "Choose a page:",
-    ["Dashboard", "Account Generator", "Review Manager"]
+    "Select page",
+    ["Dashboard","Account Generator","Activity Viewer"]
 )
 
-# Page routing
 if page == "Dashboard":
-    # Import and run account_warmer content
     exec(open("account_warmer.py").read())
 elif page == "Account Generator":
-    # Import and run account_creator content
     exec(open("account_creator.py").read())
-else:
-    st.title("🌟 Review Manager")
-    st.info("Review management features coming soon!")
-    st.markdown("### Planned Features:")
-    st.write("- Automated review generation")
-    st.write("- Lawyer database management") 
-    st.write("- Safety score monitoring for posting")
+else:  # Activity Viewer
+    st.title("🔍 Activity Viewer")
+    log_df = load_csv("activity_log.csv", ["timestamp","email","action","details"])
+    if log_df.empty:
+        st.info("No activity logged yet.")
+    else:
+        email_filter  = st.selectbox("Email", ["All"]+sorted(log_df.email.unique()))
+        action_filter = st.selectbox("Action", ["All"]+sorted(log_df.action.unique()))
+        view = log_df
+        if email_filter!="All":
+            view = view[view.email==email_filter]
+        if action_filter!="All":
+            view = view[view.action==action_filter]
+        st.dataframe(view.sort_values("timestamp",ascending=False), use_container_width=True)
