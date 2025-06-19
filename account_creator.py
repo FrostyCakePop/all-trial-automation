@@ -1,114 +1,71 @@
-import streamlit as st
-import pandas as pd
-import random
-import string
-import os
+import streamlit as st, pandas as pd, random, string, os, io, requests
 from datetime import datetime
+from github import Github                         #  <-- NEW import
 
-# Generate random email and password
-def generate_credentials():
-    first_names = ["john", "jane", "mike", "sarah", "david", "emma", "chris", "lisa", "ryan", "anna"]
-    last_names = ["smith", "johnson", "wilson", "brown", "davis", "miller", "taylor", "garcia", "martinez", "anderson"]
-    
-    first = random.choice(first_names)
-    last = random.choice(last_names)
-    number = random.randint(10, 999)
-    
-    platforms = ["gmail.com", "outlook.com", "yahoo.com"]
-    platform = random.choice(platforms)
-    
-    email = f"{first}.{last}{number}@{platform}"
-    password = ''.join(random.choices(string.ascii_letters + string.digits + "!@#$", k=12))
-    
-    return email, password, platform.split('.')[0].title()
+# ---------- constants ----------
+COLUMNS = ["email","password","platform","location","status",
+           "health_score","warming_stage","created_date",
+           "daily_emails","safety_score"]
 
-def generate_location():
-    locations = [
-        "New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX", "Phoenix, AZ",
-        "Philadelphia, PA", "San Antonio, TX", "San Diego, CA", "Dallas, TX", "San Jose, CA",
-        "Austin, TX", "Jacksonville, FL", "Fort Worth, TX", "Columbus, OH", "Charlotte, NC",
-        "San Francisco, CA", "Indianapolis, IN", "Seattle, WA", "Denver, CO", "Washington, DC"
-    ]
-    return random.choice(locations)
+# ---------- GitHub helper ----------
+def push_csv_to_github(df: pd.DataFrame):
+    csv_text = df.to_csv(index=False)
+    open("accounts.csv", "w", encoding="utf-8").write(csv_text)  # local copy
+    g     = Github(st.secrets["GH_TOKEN"])
+    repo  = g.get_repo(st.secrets["REPO"])
+    path  = st.secrets["CSV_PATH"]
+    try:                                 # update if file already exists
+        contents = repo.get_contents(path, ref="main")
+        repo.update_file(path, "auto-update accounts.csv", csv_text,
+                         contents.sha, branch="main")
+    except Exception:                    # or create the file first time
+        repo.create_file(path, "create accounts.csv",
+                         csv_text, branch="main")
 
-# Load existing accounts or create empty DataFrame
+# ---------- load on start ----------
+@st.cache_data(show_spinner=False)
 def load_accounts():
-    if os.path.exists("accounts.csv"):
-        return pd.read_csv("accounts.csv")
-    else:
-        return pd.DataFrame(columns=[
-            "email", "password", "platform", "location", "status", 
-            "health_score", "warming_stage", "created_date", "daily_emails", "safety_score"
-        ])
+    raw = f"https://raw.githubusercontent.com/{st.secrets['REPO']}/main/{st.secrets['CSV_PATH']}"
+    try:
+        return pd.read_csv(raw)
+    except Exception:
+        return pd.DataFrame(columns=COLUMNS)
 
-# Save accounts to CSV
-def save_accounts(df):
-    df.to_csv("accounts.csv", index=False)
-    return True
-
-# Main Streamlit interface
-st.title("🚀 Automated Email Account Generator")
-st.markdown("Generate multiple email accounts with automatic CSV persistence")
-
-# Load existing accounts
 df = load_accounts()
 
-# Display current account count
-st.metric("Total Accounts", len(df))
+# ---------- UI ----------
+st.title("📧 Bulk Account Generator (auto-save)")
+st.metric("Current accounts", len(df))
 
-# Account generation form
-with st.form("bulk_generator"):
-    st.subheader("Bulk Account Generation")
-    num_accounts = st.slider("Number of accounts to generate", 1, 50, 10)
-    auto_start_warming = st.checkbox("Auto-start warming for new accounts", value=True)
-    
-    if st.form_submit_button("🎯 Generate Accounts"):
-        new_accounts = []
-        
-        progress_bar = st.progress(0)
-        for i in range(num_accounts):
-            email, password, platform = generate_credentials()
-            location = generate_location()
-            
-            new_account = {
-                "email": email,
-                "password": password,
-                "platform": platform,
-                "location": location,
-                "status": "active" if auto_start_warming else "created",
-                "health_score": 100,
-                "warming_stage": 1,
-                "created_date": datetime.now().strftime("%Y-%m-%d"),
-                "daily_emails": 0,
-                "safety_score": 65
-            }
-            new_accounts.append(new_account)
-            progress_bar.progress((i + 1) / num_accounts)
-        
-        # Add new accounts to existing DataFrame
-        new_df = pd.DataFrame(new_accounts)
-        df = pd.concat([df, new_df], ignore_index=True)
-        
-        # Save to CSV
-        if save_accounts(df):
-            st.success(f"✅ Successfully generated {num_accounts} accounts!")
-            st.balloons()
-        else:
-            st.error("❌ Failed to save accounts")
+with st.form("gen"):
+    qty = st.slider("How many accounts?", 1, 50, 5)
+    auto = st.checkbox("Auto-start warming", True)
+    go   = st.form_submit_button("Generate")
 
-# Display accounts table
-if len(df) > 0:
-    st.subheader("📋 Generated Accounts")
-    st.dataframe(
-        df[["email", "platform", "location", "status", "health_score", "safety_score"]],
-        use_container_width=True
-    )
-    
-    # Download CSV button
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="📥 Download Accounts CSV",
-        data=csv,
-        file_name="email_accounts.csv",
-        mime="text/csv"
-    )
+if go:
+    data = []
+    for _ in range(qty):
+        first = random.choice(["john","jane","sam","lisa","mark","emma"])
+        last  = random.choice(["smith","lee","wilson","brown"])
+        num   = random.randint(100,999)
+        domain= random.choice(["gmail.com","outlook.com","yahoo.com"])
+        email = f"{first}.{last}{num}@{domain}"
+        pwd   = ''.join(random.choices(string.ascii_letters+string.digits, k=12))
+        data.append({
+            "email": email,
+            "password": pwd,
+            "platform": domain.split('.')[0].title(),
+            "location": random.choice(["NY","CA","TX","FL","IL"]),
+            "status": "active" if auto else "created",
+            "health_score": 100,
+            "warming_stage": 1,
+            "created_date": datetime.now().strftime("%Y-%m-%d"),
+            "daily_emails": 0,
+            "safety_score": 65
+        })
+    df = pd.concat([df, pd.DataFrame(data)], ignore_index=True)
+    push_csv_to_github(df)                    # <-- auto-save
+    st.success(f"Saved {qty} new accounts permanently!")
+    st.balloons()
+
+st.dataframe(df, use_container_width=True)
