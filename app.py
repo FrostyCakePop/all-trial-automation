@@ -1,59 +1,92 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from datetime import datetime, timedelta
+import json
+import os
+import random
 
-# --- Helper: Calculate Health Score ---
-def calc_health_score(user_log, days=14):
-    # Score: % of last N days with at least 1 activity
-    if not user_log:
-        return 0
-    today = datetime.now().date()
-    date_set = set([pd.to_datetime(a['timestamp']).date() for a in user_log])
-    last_n = [today - timedelta(days=i) for i in range(days)]
-    active_days = sum([d in date_set for d in last_n])
-    return int((active_days / days) * 100)
+TEMPLATE_FILE = "activity_templates.json"
 
-# --- Helper: Draw Calendar Heatmap ---
-def plot_calendar_heatmap(user_log, days=30):
-    if not user_log:
-        st.info("No activity yet for this account.")
-        return
-    today = datetime.now().date()
-    date_set = [pd.to_datetime(a['timestamp']).date() for a in user_log]
-    last_n = [today - timedelta(days=i) for i in range(days)]
-    values = [date_set.count(d) for d in last_n]
-    dates = [d.strftime("%b %d") for d in reversed(last_n)]
+def load_templates():
+    if os.path.exists(TEMPLATE_FILE):
+        with open(TEMPLATE_FILE, "r") as f:
+            return json.load(f)
+    else:
+        # Default templates if file doesn't exist
+        return [
+            "Commented on a {topic} post in {location}",
+            "Liked a {topic} article in {location}",
+            "Shared a news update about {topic} in {location}",
+            "Followed a user interested in {topic} in {location}",
+            "Replied to a general discussion on {topic} in {location}"
+        ]
 
-    fig, ax = plt.subplots(figsize=(10,1.2))
-    cmap = sns.light_palette("seagreen", as_cmap=True)
-    data = np.array([values])
-    sns.heatmap(data, ax=ax, cmap=cmap, cbar=False, linewidths=1, linecolor='grey', annot=False, xticklabels=dates, yticklabels=[])
-    ax.set_xticklabels(dates, rotation=90, fontsize=8)
-    ax.set_yticklabels([])
-    plt.tight_layout()
-    st.pyplot(fig)
+def save_templates(templates):
+    with open(TEMPLATE_FILE, "w") as f:
+        json.dump(templates, f, indent=2)
 
-# --- Usage example (Put inside your per-account section) ---
-# Assume selected_user is the username and user_log is its log
-accounts = st.session_state.get('accounts', [])
-activity_log = st.session_state.get('activity_log', [])
+def generate_neutral_activity(location, topic="general"):
+    templates = load_templates()
+    if not templates:
+        return "No templates available."
+    template = random.choice(templates)
+    return template.format(topic=topic, location=location)
 
-if accounts:
-    usernames = [a['username'] for a in accounts]
-    selected_user = st.selectbox("Select account to view activity log", usernames)
-    user_log = [a for a in activity_log if a['username'] == selected_user]
+# --- Streamlit UI ---
 
-    if user_log:
-        # Activity Health Score
-        score = calc_health_score(user_log)
-        badge_color = "green" if score > 80 else "orange" if score > 50 else "red"
-        st.markdown(f"<div style='display:inline-block;background:{badge_color};color:white;padding:6px 12px;border-radius:6px;font-weight:bold;'>Activity Health Score: {score}%</div>", unsafe_allow_html=True)
+st.title("Activity Template Manager & Generator")
 
-        # Calendar Heatmap
-        st.subheader("Activity Calendar (Past 30 Days)")
-        plot_calendar_heatmap(user_log, days=30)
+st.header("📝 Manage Activity Templates")
+templates = load_templates()
+edited_templates = st.text_area(
+    "Edit your activity templates (one per line):",
+    value="\n".join(templates),
+    height=150
+)
 
-        # ... (rest of your activity log code here) ...
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Save Templates"):
+        new_templates = [line.strip() for line in edited_templates.splitlines() if line.strip()]
+        save_templates(new_templates)
+        st.success("Templates saved! (This will be reflected in future activities.)")
+with col2:
+    if st.button("Reset to Defaults"):
+        defaults = [
+            "Commented on a {topic} post in {location}",
+            "Liked a {topic} article in {location}",
+            "Shared a news update about {topic} in {location}",
+            "Followed a user interested in {topic} in {location}",
+            "Replied to a general discussion on {topic} in {location}"
+        ]
+        save_templates(defaults)
+        st.success("Templates reset to default values.")
+
+st.divider()
+
+st.header("🤖 Preview Neutral Activity Generation")
+
+demo_locations = ["Dallas", "Chicago", "San Francisco", "London"]
+demo_topics = ["sports", "travel", "technology", "music", "food"]
+
+location = st.selectbox("Pick a location", demo_locations)
+topic = st.selectbox("Pick a topic", demo_topics)
+
+if st.button("Generate Example Activity"):
+    activity = generate_neutral_activity(location, topic)
+    st.info(f"Example activity: {activity}")
+
+st.markdown("""
+---
+**How this works:**  
+- Activity templates are saved in a file called `activity_templates.json`.  
+- Edit/add templates above. Use `{topic}` and `{location}` as variables in your templates.  
+- The generator picks a random template and fills in the chosen topic/location.
+""")
+
+st.markdown("""
+---
+**Suggestions for upgrades:**  
+- Add “Download Templates” and “Upload Templates” buttons for backup/sharing.  
+- Tag templates (e.g., comment, like, share) for more advanced simulation.  
+- Add a “Test All” button to preview every template at once.  
+- Support multi-language or region-specific templates.
+""")
