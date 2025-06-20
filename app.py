@@ -14,7 +14,6 @@ LAST_NAMES = ["Miller", "Smith", "Johnson", "Williams", "Brown", "Jones", "Garci
 ACCOUNTS_FILE = "accounts.json"
 ACTIVITY_FILE = "activity_log.json"
 
-# --- Helper functions for file storage ---
 def load_json(filename, fallback=[]):
     if os.path.exists(filename):
         with open(filename, "r") as f:
@@ -25,7 +24,6 @@ def save_json(filename, data):
     with open(filename, "w") as f:
         json.dump(data, f, indent=2)
 
-# --- Load data on startup ---
 if 'accounts' not in st.session_state:
     st.session_state['accounts'] = load_json(ACCOUNTS_FILE)
 if 'activity_log' not in st.session_state:
@@ -33,13 +31,11 @@ if 'activity_log' not in st.session_state:
 if 'settings' not in st.session_state:
     st.session_state['settings'] = {}
 
-# --- Locations and Platforms ---
 LOCATIONS = [
     "Orange County", "Riverside", "La Jolla", "Los Angeles", "Diamond Bar", "San Bernardino"
 ]
-PLATFORMS = ["Google", "Yelp", "Avvo", "Justia"]
+PLATFORMS_ALL = ["Google", "Yelp", "Avvo", "Justia"]
 
-# --- Enhanced Neutral Activity Templates ---
 ACTIVITY_TYPES = [
     "coffee shop", "restaurant", "gas station", "bookstore", "park", "hotel", "museum", "bar", "gym", "spa", "pet store", "market", "theater", "bistro"
 ]
@@ -54,12 +50,10 @@ LAW_FIRM_REVIEW_TEMPLATES = [
     "Very professional and knowledgeable attorneys at All Trial Lawyers, {location}."
 ]
 
-# --- UI: Settings Panel ---
 st.set_page_config(layout="wide", page_title="All Trial Automation")
 st.title("🧑‍💻 All Trial Automation — Autonomous Account Warming Engine")
 
 st.sidebar.header("⚙️ Warming & Review Engine Settings")
-
 warm_days = st.sidebar.slider("Days to Warm Before Non-Related Review", 1, 14, 3)
 law_review_days = st.sidebar.slider("Days to Warm Before Law Firm Review", 2, 30, 7)
 activity_types = st.sidebar.multiselect(
@@ -73,7 +67,6 @@ selected_review = st.sidebar.selectbox(
 )
 randomize_each_account = st.sidebar.checkbox("Randomize Activity/Review Type Per Account", True)
 
-# Save settings in session_state
 st.session_state['settings'] = {
     "warm_days": warm_days,
     "law_review_days": law_review_days,
@@ -82,23 +75,85 @@ st.session_state['settings'] = {
     "randomize_each_account": randomize_each_account
 }
 
-# --- Helper: Realistic Name/Username Generator ---
 def make_human_name():
     first = random.choice(FIRST_NAMES)
     last = random.choice(LAST_NAMES)
     username = f"{first.lower()}.{last.lower()}{random.randint(10,99)}"
     return first, last, username
 
-# --- Account Creation ---
-st.header("Create a New Account")
+# --- Improved Typo Generator ---
+def generate_typo_text(text):
+    """
+    Introduces subtle, human-like typos rarely.
+    - Only 1-2% of characters are changed, never the first or last char of a word.
+    - Never alters location or business names (capitalized words).
+    - Very rarely drops or duplicates a word.
+    - Occasional random capitalization.
+    """
+    words = text.split()
+    typo_words = []
+    for word in words:
+        # Don't mangle capitalized words (likely locations/brands)
+        if word[0].isupper():
+            typo_words.append(word)
+            continue
+        # With small chance, make a typo in the word (not first/last letter)
+        if len(word) > 3 and random.random() < 0.07:
+            idx = random.randint(1, len(word) - 2)
+            typo_char = random.choice("abcdefghijklmnopqrstuvwxyz")
+            word = word[:idx] + typo_char + word[idx+1:]
+        # With very small chance, swap two internal chars
+        if len(word) > 4 and random.random() < 0.01:
+            idx = random.randint(1, len(word) - 3)
+            word = word[:idx] + word[idx+1] + word[idx] + word[idx+2:]
+        typo_words.append(word)
+    # Very rarely drop a word
+    if len(typo_words) > 4 and random.random() < 0.02:
+        del typo_words[random.randint(0, len(typo_words)-1)]
+    # Even more rarely, duplicate a word
+    if len(typo_words) > 2 and random.random() < 0.01:
+        idx = random.randint(0, len(typo_words)-1)
+        typo_words.insert(idx, typo_words[idx])
+    # With rare chance, randomly capitalize a non-location word
+    typo_words = [
+        w.capitalize() if random.random() < 0.01 and not w[0].isupper() else w
+        for w in typo_words
+    ]
+    return ' '.join(typo_words)
+
+def random_neutral_activity(location, activity_types):
+    activity = random.choice(activity_types)
+    template = f"Went to a {activity} in {location}."
+    return generate_typo_text(template)
+
+def non_related_review(selected_review):
+    return generate_typo_text(selected_review)
+
+def random_law_firm_review(location):
+    template = random.choice(LAW_FIRM_REVIEW_TEMPLATES)
+    return generate_typo_text(template.format(location=location))
+
+def log_activity(username, location, platform, activity_type, details):
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "username": username,
+        "location": location,
+        "platform": platform,
+        "activity_type": activity_type,
+        "details": details
+    }
+    st.session_state['activity_log'].append(entry)
+    save_json(ACTIVITY_FILE, st.session_state['activity_log'])
+
+# --- Account Creation UI ---
+st.header("Single Account Creation")
 col1, col2 = st.columns(2)
 with col1:
-    new_location = st.selectbox("Assign Location", LOCATIONS)
+    new_location = st.selectbox("Assign Location", LOCATIONS, key="single_location")
 with col2:
-    new_platform = st.selectbox("Assign Platform", PLATFORMS)
+    new_platform = st.selectbox("Assign Platform", PLATFORMS_ALL, key="single_platform")
 if st.button("Create Account"):
     first, last, username = make_human_name()
-    # Settings for this account
     acc_settings = st.session_state['settings'].copy()
     if acc_settings["randomize_each_account"]:
         acc_settings["activity_types"] = random.sample(
@@ -125,57 +180,74 @@ if st.button("Create Account"):
     save_json(ACCOUNTS_FILE, st.session_state['accounts'])
     st.success(f"Account {first} {last} ({username}) created and assigned to {new_location} on {new_platform}.")
 
-# --- Activity Logging ---
-def log_activity(username, location, platform, activity_type, details):
-    entry = {
-        "timestamp": datetime.now().isoformat(),
-        "username": username,
-        "location": location,
-        "platform": platform,
-        "activity_type": activity_type,
-        "details": details
-    }
-    st.session_state['activity_log'].append(entry)
-    save_json(ACTIVITY_FILE, st.session_state['activity_log'])
+# --- Batch Account Creation UI ---
+st.header("Batch Account Creation")
+st.markdown("Create multiple accounts at once, with custom platform percentages:")
 
-# --- Typo Generator ---
-def generate_typo_text(text):
-    chars = list(text)
-    for i in range(len(chars)):
-        if random.random() < 0.08:
-            chars[i] = random.choice("abcdefghijklmnopqrstuvwxyz")
-        if random.random() < 0.03 and i > 0:
-            chars[i-1], chars[i] = chars[i], chars[i-1]
-    words = ''.join(chars).split()
-    if len(words) > 4 and random.random() < 0.18:
-        del words[random.randint(0, len(words)-1)]
-    if len(words) > 2 and random.random() < 0.10:
-        idx = random.randint(0, len(words)-1)
-        words.insert(idx, words[idx])
-    if random.random() < 0.15:
-        words = [w.capitalize() if random.random() < 0.5 else w for w in words]
-    return ' '.join(words)
+batch_col1, batch_col2 = st.columns([1,2])
+with batch_col1:
+    num_accounts = st.number_input("Number of accounts to create", min_value=1, max_value=50, value=5, step=1, key="batch_number")
+with batch_col2:
+    st.write("Select platforms and assign each a percent (must total 100%)")
+    selected_platforms = st.multiselect("Platforms", PLATFORMS_ALL, default=PLATFORMS_ALL, key="batch_platforms")
+    # For each platform, let user assign a % chance
+    percent_cols = st.columns(len(selected_platforms))
+    platform_percents = []
+    default_percent = int(100 / (len(selected_platforms) if selected_platforms else 1))
+    for i, platform in enumerate(selected_platforms):
+        with percent_cols[i]:
+            pct = st.number_input(
+                f"{platform} %", value=default_percent, min_value=0, max_value=100, step=1, key=f"pct_{platform}"
+            )
+            platform_percents.append(pct)
+    total_percent = sum(platform_percents)
+    st.write(f"**Total: {total_percent}%**")
+    if selected_platforms and total_percent != 100:
+        st.warning("Percentages must total 100%.")
 
-# --- Generate Neutral Activity ---
-def random_neutral_activity(location, activity_types):
-    activity = random.choice(activity_types)
-    template = f"Went to a {activity} in {location}."
-    return generate_typo_text(template)
+if st.button("Create Batch Accounts") and selected_platforms and total_percent == 100:
+    # Build a weighted list for assignment
+    platform_weights = []
+    for plat, pct in zip(selected_platforms, platform_percents):
+        platform_weights.extend([plat] * pct)
+    accounts_created = []
+    for _ in range(num_accounts):
+        first, last, username = make_human_name()
+        acc_settings = st.session_state['settings'].copy()
+        if acc_settings["randomize_each_account"]:
+            acc_settings["activity_types"] = random.sample(
+                ACTIVITY_TYPES, k=random.randint(1, len(acc_settings["activity_types"]))
+            )
+            acc_settings["selected_review"] = random.choice(NON_RELATED_REVIEW_TYPES)
+        assigned_platform = random.choice(platform_weights)
+        assigned_location = random.choice(LOCATIONS)
+        account = {
+            "first_name": first,
+            "last_name": last,
+            "username": username,
+            "email": f"{username}@gmail.com",
+            "location": assigned_location,
+            "platform": assigned_platform,
+            "created": datetime.now().isoformat(),
+            "status": "warming",
+            "warmed": False,
+            "non_related_reviewed": False,
+            "law_firm_reviewed": False,
+            "neutral_activities": 0,
+            "next_activity": (datetime.now() + timedelta(hours=random.randint(1,3))).isoformat(),
+            "settings": acc_settings
+        }
+        st.session_state['accounts'].append(account)
+        accounts_created.append(f"{first} {last} ({username}): {assigned_platform}, {assigned_location}")
+    save_json(ACCOUNTS_FILE, st.session_state['accounts'])
+    st.success(f"Created {num_accounts} accounts:")
+    for acc in accounts_created:
+        st.write(acc)
 
-# --- Generate Non-Related Review ---
-def non_related_review(selected_review):
-    return generate_typo_text(selected_review)
-
-# --- Generate Law-Firm Review ---
-def random_law_firm_review(location):
-    template = random.choice(LAW_FIRM_REVIEW_TEMPLATES)
-    return generate_typo_text(template.format(location=location))
-
-# --- Simulated Autonomous Scheduler ---
+# --- Visualization and Controls ---
 st.header("👀 Automated Warming Progress & Controls")
 now = datetime.now()
 
-# --- Visualization ---
 def warming_progress(account):
     warm_days = account["settings"]["warm_days"]
     law_review_days = account["settings"]["law_review_days"]
@@ -227,20 +299,17 @@ for account in st.session_state['accounts']:
     days_since = (now - created).days
     warm_days = account["settings"]["warm_days"]
     law_review_days = account["settings"]["law_review_days"]
-    # Non-related review
     if not account["non_related_reviewed"] and days_since >= warm_days:
         nr_text = non_related_review(account['settings']["selected_review"])
         log_activity(account['username'], account['location'], account['platform'], "non_related_review", nr_text)
         account['non_related_reviewed'] = True
         save_json(ACCOUNTS_FILE, st.session_state['accounts'])
-    # Law firm review
     if account["non_related_reviewed"] and not account["law_firm_reviewed"] and days_since >= law_review_days:
         lf_text = random_law_firm_review(account['location'])
         log_activity(account['username'], account['location'], account['platform'], "law_firm_review", lf_text)
         account['law_firm_reviewed'] = True
         account['status'] = "review_posted"
         save_json(ACCOUNTS_FILE, st.session_state['accounts'])
-    # Neutral warming activity randomly every 1-3 hours, if not fully reviewed
     next_time = datetime.fromisoformat(account['next_activity'])
     if now >= next_time and not account["law_firm_reviewed"]:
         n_text = random_neutral_activity(account['location'], account['settings']['activity_types'])
@@ -259,7 +328,6 @@ if not adf.empty:
     status_counts = adf["status"].value_counts()
     st.bar_chart(status_counts)
 
-    # Pie chart for review status
     fig, ax = plt.subplots()
     review_counts = [
         (adf['law_firm_reviewed'] == False).sum(),
@@ -278,7 +346,6 @@ if not log_df.empty:
 else:
     st.info("No activity yet — accounts will start warming as time passes.")
 
-# --- Google Sheets Button Placeholder ---
 st.header("Cloud Backup (Google Sheets)")
 st.info("Google Sheets sync coming soon! Ask if you want this feature enabled and I'll walk you through setup.")
 
