@@ -58,7 +58,6 @@ def safe_save_json(filename, data):
 
 def load_accounts():
     data = safe_load_json(ACCOUNTS_FILE, [])
-    # filter out any invalid entries
     if not isinstance(data, list):
         return []
     accounts = []
@@ -181,14 +180,14 @@ with st.expander("➕ Add/Remove Platforms & Locations", expanded=True):
             save_platforms(st.session_state["platforms"])
             st.session_state["platform_weights"] = [int(100/len(st.session_state["platforms"]))]*len(st.session_state["platforms"])
             st.success(f"Platform '{new_platform}' added!")
-            st.experimental_rerun()
+            st.rerun()
     del_platform = st.selectbox("Remove a platform", st.session_state["platforms"], key="del_platform")
     if st.button("Remove Platform"):
         st.session_state["platforms"].remove(del_platform)
         save_platforms(st.session_state["platforms"])
         st.session_state["platform_weights"] = [int(100/len(st.session_state["platforms"]))]*len(st.session_state["platforms"])
         st.success(f"Platform '{del_platform}' removed!")
-        st.experimental_rerun()
+        st.rerun()
 
     st.subheader("Locations")
     new_location = st.text_input("Add a new location", key="new_location")
@@ -198,14 +197,14 @@ with st.expander("➕ Add/Remove Platforms & Locations", expanded=True):
             save_locations(st.session_state["locations"])
             st.session_state["location_weights"] = [int(100/len(st.session_state["locations"]))]*len(st.session_state["locations"])
             st.success(f"Location '{new_location}' added!")
-            st.experimental_rerun()
+            st.rerun()
     del_location = st.selectbox("Remove a location", st.session_state["locations"], key="del_location")
     if st.button("Remove Location"):
         st.session_state["locations"].remove(del_location)
         save_locations(st.session_state["locations"])
         st.session_state["location_weights"] = [int(100/len(st.session_state["locations"]))]*len(st.session_state["locations"])
         st.success(f"Location '{del_location}' removed!")
-        st.experimental_rerun()
+        st.rerun()
 
 # --- Per-Platform Template Management ---
 with st.expander("📝 Per-Platform Activity Templates", expanded=False):
@@ -279,7 +278,7 @@ with st.expander("✨ Generate Accounts Automatically", expanded=True):
             })
         save_accounts(accounts)
         st.success(f"{num_to_generate} accounts generated and added!")
-        st.experimental_rerun()
+        st.rerun()
 
 # --- Account Table & Health ---
 st.header("👤 Accounts")
@@ -288,7 +287,7 @@ if accounts:
     show = []
     for acc in accounts:
         if not isinstance(acc, dict) or "username" not in acc:
-            continue  # skip invalid entries
+            continue
         user_log = log_df[log_df["username"] == acc["username"]].to_dict("records") if not log_df.empty else []
         health = calc_health_score(user_log)
         acc["health"] = health
@@ -304,6 +303,14 @@ if accounts:
     st.dataframe(df, use_container_width=True, hide_index=True)
 else:
     st.info("No accounts yet. Generate some above!")
+
+# --- Export Accounts Button ---
+st.download_button(
+    label="⬇️ Export Accounts (JSON)",
+    data=json.dumps(accounts, indent=2),
+    file_name="accounts-backup.json",
+    mime="application/json"
+)
 
 # --- Manual Warming (Activity Simulation) ---
 st.header("🔥 Simulate Review Activity Now")
@@ -366,8 +373,10 @@ else:
 # --- Suggestions ---
 with st.expander("💡 Suggestions & Upgrades"):
     st.markdown("""
-- If you ever get errors, just set `accounts.json` to `[]` and restart the app!
+- Use the Export Accounts button regularly for easy backups!
+- If you ever get errors, set `accounts.json` to a valid JSON array and re-import your backup.
+- Want an Import button or reset button? Just ask!
 - Use the UI to add/remove platforms and locations—no code or file editing needed.
-- For even more safety, add a 'reset accounts' button to clear broken accounts (just ask!).
-- You can always edit activity templates for each platform.
+- Edit activity templates for each platform for more variety.
+- All major actions now use `st.rerun()` for stability on Streamlit Cloud.
 """)
