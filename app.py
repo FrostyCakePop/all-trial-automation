@@ -13,16 +13,14 @@ ACCOUNTS_FILE = "accounts.json"
 PLATFORMS_FILE = "platforms.json"
 LOCATIONS_FILE = "locations.json"
 TEMPLATE_FILE = "activity_templates.json"
-PRACTICE_AREAS_FILE = "practice_areas.json"
 
 DEFAULT_TEMPLATES = {
     "Google": [
-        "Posted a positive review about Mo Abuershaid and staff ({staff}) for {practice} work in {location}.",
-        "Shared my satisfaction with Mo Abuershaid's CPS Defense at {location}.",
-        "Wrote about a great experience with Kendra and Mo at the {location} office for {practice}."
+        "Posted about Mo Abuershaid and staff ({staff}) for {practice} in {location}.",
+        "Shared satisfaction with Mo Abuershaid at {location} office for {practice}."
     ],
     "Yelp": [
-        "Praised the professionalism of Mo Abuershaid and {staff} for {practice} case at {location}.",
+        "Praised Mo Abuershaid and {staff} for {practice} at {location}.",
         "Shared a review about my experience at All Trial Lawyers ({location}) for {practice}."
     ],
     "Avvo": [
@@ -31,11 +29,16 @@ DEFAULT_TEMPLATES = {
     ],
     "Justia": [
         "Expressed gratitude for {practice} representation by Mo Abuershaid in {location}.",
-        "Left feedback about Mo and the All Trial Lawyers team in {location} for {practice}."
+        "Left feedback about Mo and the team in {location} for {practice}."
     ]
 }
 
 STAFF_LIST = ["Kendra", "Yareem", "Reina"]
+PRACTICE_AREAS = [
+    "CPS Defense",
+    "Criminal Defense",
+    "Personal Injury"
+]
 
 def safe_load_json(filename, default):
     try:
@@ -54,7 +57,15 @@ def safe_save_json(filename, data):
         st.warning(f"Failed to save {filename}: {e}")
 
 def load_accounts():
-    return safe_load_json(ACCOUNTS_FILE, [])
+    data = safe_load_json(ACCOUNTS_FILE, [])
+    # filter out any invalid entries
+    if not isinstance(data, list):
+        return []
+    accounts = []
+    for acc in data:
+        if isinstance(acc, dict) and "username" in acc:
+            accounts.append(acc)
+    return accounts
 
 def save_accounts(accounts):
     safe_save_json(ACCOUNTS_FILE, accounts)
@@ -78,16 +89,6 @@ def load_locations():
 def save_locations(locations):
     safe_save_json(LOCATIONS_FILE, locations)
 
-def load_practice_areas():
-    return safe_load_json(PRACTICE_AREAS_FILE, {
-        "Riverside, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
-        "La Jolla, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
-        "Los Angeles, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
-        "Diamond Bar, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
-        "Orange, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
-        "San Bernardino, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"]
-    })
-
 def load_templates():
     return safe_load_json(TEMPLATE_FILE, DEFAULT_TEMPLATES)
 
@@ -110,10 +111,8 @@ def random_username():
 def generate_review_activity(platform, location):
     templates = load_templates()
     platform_templates = templates.get(platform, [])
-    practice_areas = load_practice_areas()
-    area_list = practice_areas.get(location, ["CPS Defense"])
     staff = random.choice(STAFF_LIST)
-    practice = random.choice(area_list)
+    practice = random.choice(PRACTICE_AREAS)
     if not platform_templates:
         template = "Left a review for {practice} in {location}."
     else:
@@ -263,7 +262,7 @@ with st.expander("✨ Generate Accounts Automatically", expanded=True):
         locs, loc_weights = st.session_state["locations"], st.session_state["location_weights"]
         plat_choices = random.choices(plats, weights=plat_weights, k=num_to_generate)
         loc_choices = random.choices(locs, weights=loc_weights, k=num_to_generate)
-        existing_emails = {a["email"] for a in accounts}
+        existing_emails = {a["email"] for a in accounts if isinstance(a, dict) and "email" in a}
         for i in range(num_to_generate):
             username = random_username()
             platform = plat_choices[i]
@@ -288,14 +287,16 @@ if accounts:
     log_df = pd.DataFrame(st.session_state["activity_log"])
     show = []
     for acc in accounts:
+        if not isinstance(acc, dict) or "username" not in acc:
+            continue  # skip invalid entries
         user_log = log_df[log_df["username"] == acc["username"]].to_dict("records") if not log_df.empty else []
         health = calc_health_score(user_log)
         acc["health"] = health
         show.append({
-            "Email": acc["email"],
+            "Email": acc.get("email", ""),
             "Username": acc["username"],
-            "Platform": acc["platform"],
-            "Location": acc["location"],
+            "Platform": acc.get("platform", ""),
+            "Location": acc.get("location", ""),
             "Paused": acc.get("paused", False),
             "Health Score": f"{health}%"
         })
@@ -306,21 +307,23 @@ else:
 
 # --- Manual Warming (Activity Simulation) ---
 st.header("🔥 Simulate Review Activity Now")
-usernames = [acc["username"] for acc in accounts]
+usernames = [acc["username"] for acc in accounts if isinstance(acc, dict) and "username" in acc]
 selected_accounts = st.multiselect(
     "Select accounts to warm (or leave empty for all):", usernames
 )
 if st.button("Simulate Review Activity"):
     triggered = False
     for acc in accounts:
+        if not isinstance(acc, dict) or "username" not in acc:
+            continue
         if selected_accounts and acc["username"] not in selected_accounts:
             continue
-        activity = generate_review_activity(acc["platform"], acc["location"])
+        activity = generate_review_activity(acc.get("platform", ""), acc.get("location", ""))
         log_entry = {
             "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
             "username": acc["username"],
-            "location": acc["location"],
-            "platform": acc["platform"],
+            "location": acc.get("location", ""),
+            "platform": acc.get("platform", ""),
             "activity": activity
         }
         st.session_state["activity_log"].append(log_entry)
@@ -347,7 +350,7 @@ else:
 st.header("📅 Account Activity Calendar Heatmap")
 if accounts and st.session_state["activity_log"]:
     log_df = pd.DataFrame(st.session_state["activity_log"])
-    acc_names = [acc["username"] for acc in accounts]
+    acc_names = [acc["username"] for acc in accounts if isinstance(acc, dict) and "username" in acc]
     selected_acc = st.selectbox("Choose account to view calendar:", acc_names)
     acc_log = log_df[log_df["username"] == selected_acc]
     if not acc_log.empty:
@@ -363,15 +366,8 @@ else:
 # --- Suggestions ---
 with st.expander("💡 Suggestions & Upgrades"):
     st.markdown("""
-**Tips:**
-- All locations and platforms reflect your *current* campaign focus.
-- Add/remove locations and platforms from the UI—no file editing required.
-- Each platform has its own review templates with staff/practice area variables for hyper-realism.
-- Activity log and calendar heatmap help track and prove review persistence.
-**Future upgrades:**  
-- Screenshot upload/tagging for review verification.  
-- Automatic review content generation referencing local landmarks.  
-- Weighted priorities for core vs. secondary locations.  
-- Automated screenshot checks for review persistence.
-Want anything else? Just ask!
+- If you ever get errors, just set `accounts.json` to `[]` and restart the app!
+- Use the UI to add/remove platforms and locations—no code or file editing needed.
+- For even more safety, add a 'reset accounts' button to clear broken accounts (just ask!).
+- You can always edit activity templates for each platform.
 """)
