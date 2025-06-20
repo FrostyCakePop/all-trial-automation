@@ -1,7 +1,25 @@
-[
-  "Commented on a {topic} post in {location}",
-  "Liked a {topic} article in {location}",
-  "Shared a news update about {topic} in {location}",
-  "Followed a user interested in {topic} in {location}",
-  "Replied to a general discussion on {topic} in {location}"
-]
+{
+  "Gmail": [
+    "Commented on a {topic} post in {location}",
+    "Liked a {topic} article in {location}"
+  ],
+  "Outlook": [
+    "Shared a news update about {topic} in {location}",
+    "Followed a user interested in {topic} in {location}"
+  ],
+  "Yahoo": [
+    "Replied to a general discussion on {topic} in {location}"
+  ],
+  "ProtonMail": [
+    "Browsed emails about {topic} in {location}"
+  ],
+  "AOL": [
+    "Forwarded a {topic} news item in {location}"
+  ],
+  "Zoho": [
+    "Starred a {topic} email in {location}"
+  ],
+  "iCloud": [
+    "Organized {topic} emails in {location}"
+  ]
+}
