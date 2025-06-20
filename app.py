@@ -191,36 +191,12 @@ if not log_df.empty:
 else:
     st.info("No activity yet — accounts will start warming as time passes.")
 
-st.caption("💾 All accounts and activities are permanently saved. Enjoy the mobile-friendly dashboard! For cloud backup (Google Sheets), see the instructions below.")
+st.caption("💾 All accounts and activities are permanently saved. Enjoy the mobile-friendly dashboard!")
 
-# ========== UPGRADE 3: Google Sheets Cloud Backup (instructions) ==========
-
-st.subheader("🔗 Cloud Backup: Google Sheets (Optional)")
-st.markdown("""
-To automatically sync your accounts and activity log to Google Sheets for team access and offsite backup:
-
-1. [Create a Google Service Account and JSON key](https://docs.gspread.org/en/latest/oauth2.html)
-2. Share your Google Sheet with the service account email.
-3. Add `gspread` and `oauth2client` to your `requirements.txt`:
-    ```
-    streamlit
-    pandas
-    gspread
-    oauth2client
-    ```
-4. Upload your Google credentials JSON as a [Streamlit secret](https://docs.streamlit.io/streamlit-community-cloud/deploy-your-app/secrets-management).
-5. Add the following code (before your main Streamlit logic):
-
-```python
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-
-def sync_to_gsheet(accounts, activity_log, sheet_url):
-    scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_name(st.secrets["google_creds"], scope)
-    client = gspread.authorize(creds)
-    sheet = client.open_by_url(sheet_url)
-    accounts_ws = sheet.worksheet("Accounts")
-    activity_ws = sheet.worksheet("ActivityLog")
-    accounts_ws.update([list(accounts[0].keys())] + [list(a.values()) for a in accounts])
-    activity_ws.update([list(activity_log[0].keys())] + [list(a.values()) for a in activity_log])
+# Google Sheets Backup Instructions:
+# To use Google Sheets backup, follow these steps (do NOT put triple quotes here!):
+# 1. Create a Google Service Account and JSON key: https://docs.gspread.org/en/latest/oauth2.html
+# 2. Share your Sheet with the service account email.
+# 3. Add gspread and oauth2client to requirements.txt.
+# 4. Upload your Google credentials JSON as a Streamlit secret.
+# 5. Add the sync_to_gsheet() code provided earlier if you want to sync.
