@@ -8,3 +8,4 @@ matplotlib
 seaborn
 beautifulsoup4
 openai
+calplot
