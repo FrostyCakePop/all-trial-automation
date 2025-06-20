@@ -1,25 +1,18 @@
 {
-  "Gmail": [
-    "Commented on a {topic} post in {location}",
-    "Liked a {topic} article in {location}"
+  "Google": [
+    "Posted about Mo Abuershaid and staff ({staff}) for {practice} in {location}.",
+    "Shared satisfaction with Mo Abuershaid at {location} office for {practice}."
   ],
-  "Outlook": [
-    "Shared a news update about {topic} in {location}",
-    "Followed a user interested in {topic} in {location}"
+  "Yelp": [
+    "Praised Mo Abuershaid and {staff} for {practice} at {location}.",
+    "Shared a review about my experience at All Trial Lawyers ({location}) for {practice}."
   ],
-  "Yahoo": [
-    "Replied to a general discussion on {topic} in {location}"
+  "Avvo": [
+    "Rated Mo Abuershaid highly for {practice} services in {location}.",
+    "Reviewed Mo and staff ({staff}) for {practice} help at {location}."
   ],
-  "ProtonMail": [
-    "Browsed emails about {topic} in {location}"
-  ],
-  "AOL": [
-    "Forwarded a {topic} news item in {location}"
-  ],
-  "Zoho": [
-    "Starred a {topic} email in {location}"
-  ],
-  "iCloud": [
-    "Organized {topic} emails in {location}"
+  "Justia": [
+    "Expressed gratitude for {practice} representation by Mo Abuershaid in {location}.",
+    "Left feedback about Mo and the team in {location} for {practice}."
   ]
 }
