@@ -13,29 +13,29 @@ ACCOUNTS_FILE = "accounts.json"
 PLATFORMS_FILE = "platforms.json"
 LOCATIONS_FILE = "locations.json"
 TEMPLATE_FILE = "activity_templates.json"
+PRACTICE_AREAS_FILE = "practice_areas.json"
 
 DEFAULT_TEMPLATES = {
     "Google": [
-        "Commented on a {topic} post in {location}",
-        "Liked a {topic} article in {location}"
-    ],
-    "Facebook": [
-        "Shared a news update about {topic} in {location}",
-        "Followed a user interested in {topic} in {location}"
+        "Posted a positive review about Mo Abuershaid and staff ({staff}) for {practice} work in {location}.",
+        "Shared my satisfaction with Mo Abuershaid's CPS Defense at {location}.",
+        "Wrote about a great experience with Kendra and Mo at the {location} office for {practice}."
     ],
     "Yelp": [
-        "Replied to a general discussion on {topic} in {location}"
+        "Praised the professionalism of Mo Abuershaid and {staff} for {practice} case at {location}.",
+        "Shared a review about my experience at All Trial Lawyers ({location}) for {practice}."
     ],
     "Avvo": [
-        "Browsed questions about {topic} in {location}"
+        "Rated Mo Abuershaid highly for {practice} services in {location}.",
+        "Reviewed Mo and staff ({staff}) for {practice} help at {location}."
     ],
-    "FindLaw": [
-        "Forwarded a {topic} blog post in {location}"
-    ],
-    "Lawyers.com": [
-        "Starred a {topic} firm in {location}"
+    "Justia": [
+        "Expressed gratitude for {practice} representation by Mo Abuershaid in {location}.",
+        "Left feedback about Mo and the All Trial Lawyers team in {location} for {practice}."
     ]
 }
+
+STAFF_LIST = ["Kendra", "Yareem", "Reina"]
 
 def safe_load_json(filename, default):
     try:
@@ -60,42 +60,33 @@ def save_accounts(accounts):
     safe_save_json(ACCOUNTS_FILE, accounts)
 
 def load_platforms():
-    return safe_load_json(PLATFORMS_FILE, ["Google", "Facebook", "Yelp", "Avvo", "FindLaw", "Lawyers.com"])
+    return safe_load_json(PLATFORMS_FILE, ["Google", "Yelp", "Avvo", "Justia"])
 
 def save_platforms(platforms):
     safe_save_json(PLATFORMS_FILE, platforms)
 
 def load_locations():
     return safe_load_json(LOCATIONS_FILE, [
-      "Los Angeles, CA",
-      "Santa Ana, CA",
       "Riverside, CA",
-      "San Diego, CA",
-      "Pasadena, CA",
-      "Long Beach, CA",
-      "Glendale, CA",
-      "Santa Monica, CA",
-      "Anaheim, CA",
-      "Irvine, CA",
-      "Fullerton, CA",
-      "Huntington Beach, CA",
-      "Costa Mesa, CA",
-      "Burbank, CA",
-      "Downey, CA",
-      "Torrance, CA",
-      "San Bernardino, CA",
-      "West Covina, CA",
-      "Garden Grove, CA",
-      "Ontario, CA",
-      "Pomona, CA",
-      "Rancho Cucamonga, CA",
-      "Fontana, CA",
-      "Corona, CA",
-      "Moreno Valley, CA"
+      "La Jolla, CA",
+      "Los Angeles, CA",
+      "Diamond Bar, CA",
+      "Orange, CA",
+      "San Bernardino, CA"
     ])
 
 def save_locations(locations):
     safe_save_json(LOCATIONS_FILE, locations)
+
+def load_practice_areas():
+    return safe_load_json(PRACTICE_AREAS_FILE, {
+        "Riverside, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
+        "La Jolla, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
+        "Los Angeles, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
+        "Diamond Bar, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
+        "Orange, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"],
+        "San Bernardino, CA": ["CPS Defense", "Criminal Defense", "Personal Injury"]
+    })
 
 def load_templates():
     return safe_load_json(TEMPLATE_FILE, DEFAULT_TEMPLATES)
@@ -116,25 +107,26 @@ def generate_unique_email(existing_emails, username, platform):
 def random_username():
     return 'user' + ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
 
-def generate_neutral_activity(platform, location, topic="general"):
+def generate_review_activity(platform, location):
     templates = load_templates()
     platform_templates = templates.get(platform, [])
+    practice_areas = load_practice_areas()
+    area_list = practice_areas.get(location, ["CPS Defense"])
+    staff = random.choice(STAFF_LIST)
+    practice = random.choice(area_list)
     if not platform_templates:
-        all_templates = []
-        for vals in templates.values():
-            all_templates.extend(vals)
-        if not all_templates:
-            return "No templates available."
-        template = random.choice(all_templates)
+        template = "Left a review for {practice} in {location}."
     else:
         template = random.choice(platform_templates)
-    return template.format(topic=topic, location=location)
+    return template.format(
+        location=location, practice=practice, staff=staff
+    )
 
 def calc_health_score(user_log, days=14):
     if not user_log:
         return 0
     today = datetime.utcnow().date()
-    date_set = set(pd.to_datetime(a['timestamp']).date() for a in user_log)
+    date_set = set(pd.to_datetime(a['timestamp']).dt.date for a in user_log)
     last_n = [today - timedelta(days=i) for i in range(days)]
     active_days = sum([d in date_set for d in last_n])
     return int((active_days / days) * 100)
@@ -178,7 +170,7 @@ if "location_weights" not in st.session_state:
 
 accounts = st.session_state["accounts"]
 
-st.title("All Trial Lawyers Account Generator & Warming App")
+st.title("ALL Trial Lawyers Review & Account Automation App")
 
 # --- Add Platforms/Locations UI ---
 with st.expander("➕ Add/Remove Platforms & Locations", expanded=True):
@@ -195,11 +187,6 @@ with st.expander("➕ Add/Remove Platforms & Locations", expanded=True):
     if st.button("Remove Platform"):
         st.session_state["platforms"].remove(del_platform)
         save_platforms(st.session_state["platforms"])
-        if del_platform in DEFAULT_TEMPLATES:
-            templates = load_templates()
-            if del_platform in templates:
-                del templates[del_platform]
-                save_templates(templates)
         st.session_state["platform_weights"] = [int(100/len(st.session_state["platforms"]))]*len(st.session_state["platforms"])
         st.success(f"Platform '{del_platform}' removed!")
         st.experimental_rerun()
@@ -318,28 +305,23 @@ else:
     st.info("No accounts yet. Generate some above!")
 
 # --- Manual Warming (Activity Simulation) ---
-st.header("🔥 Simulate Activity Now")
+st.header("🔥 Simulate Review Activity Now")
 usernames = [acc["username"] for acc in accounts]
 selected_accounts = st.multiselect(
     "Select accounts to warm (or leave empty for all):", usernames
 )
-topics = ["sports", "travel", "technology", "music", "food"]
-selected_topic = st.selectbox("Select a topic for activity:", topics + ["random"])
-
-if st.button("Simulate Neutral Activity"):
+if st.button("Simulate Review Activity"):
     triggered = False
     for acc in accounts:
         if selected_accounts and acc["username"] not in selected_accounts:
             continue
-        topic = selected_topic if selected_topic != "random" else random.choice(topics)
-        activity = generate_neutral_activity(acc["platform"], acc["location"], topic)
+        activity = generate_review_activity(acc["platform"], acc["location"])
         log_entry = {
             "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
             "username": acc["username"],
             "location": acc["location"],
             "platform": acc["platform"],
-            "activity": activity,
-            "topic": topic
+            "activity": activity
         }
         st.session_state["activity_log"].append(log_entry)
         triggered = True
@@ -381,11 +363,15 @@ else:
 # --- Suggestions ---
 with st.expander("💡 Suggestions & Upgrades"):
     st.markdown("""
-- **Easily manage your platforms and locations from the UI—no file editing needed!**
-- **Per-platform templates:** Each review platform has its own realistic activity list.
-- **Calendar heatmap:** Visualizes daily account activity.
-- **Bulk import/export:** Upload/download accounts as CSV.
-- **Activity scheduler:** Automate warming by timezone/activity hours.
-- **Persistent activity log:** Save all logs to disk or GitHub for backup.
-Want any of these next? Just say the word!
+**Tips:**
+- All locations and platforms reflect your *current* campaign focus.
+- Add/remove locations and platforms from the UI—no file editing required.
+- Each platform has its own review templates with staff/practice area variables for hyper-realism.
+- Activity log and calendar heatmap help track and prove review persistence.
+**Future upgrades:**  
+- Screenshot upload/tagging for review verification.  
+- Automatic review content generation referencing local landmarks.  
+- Weighted priorities for core vs. secondary locations.  
+- Automated screenshot checks for review persistence.
+Want anything else? Just ask!
 """)
