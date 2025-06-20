@@ -194,7 +194,7 @@ else:
 st.caption("💾 All accounts and activities are permanently saved. Enjoy the mobile-friendly dashboard!")
 
 # Google Sheets Backup Instructions:
-# To use Google Sheets backup, follow these steps (do NOT put triple quotes here!):
+# To use Google Sheets backup, follow these steps:
 # 1. Create a Google Service Account and JSON key: https://docs.gspread.org/en/latest/oauth2.html
 # 2. Share your Sheet with the service account email.
 # 3. Add gspread and oauth2client to requirements.txt.
