@@ -32,20 +32,39 @@ LOCATIONS = [
 ]
 PLATFORMS = ["Google", "Yelp", "Avvo", "Justia"]
 
-# ----- Neutral Activity Templates -----
+# ----- Enhanced Neutral Activity Templates -----
 NEUTRAL_TOPICS = [
-    "travel", "sports", "technology", "food", "music", "nature", "science", "local news", "events", "weather", "parks"
+    "travel", "sports", "technology", "food", "music", "nature", "science", "local news", "events", "weather", "parks", "history", "art", "shopping", "nightlife", "fitness"
 ]
 NEUTRAL_ACTIONS = [
     "Googled about", "Watched a YouTube video on", "Read an article about", "Checked reviews for",
-    "Browsed Instagram posts about", "Looked at photos of", "Searched Twitter for"
+    "Browsed Instagram posts about", "Looked at photos of", "Searched Twitter for", "Read a Quora answer on", "Browsed Reddit for", "Scrolled TikTok about"
 ]
 BUSINESS_TYPES = [
-    "coffee shop", "restaurant", "gas station", "bookstore", "park", "hotel", "museum", "bar", "gym"
+    "coffee shop", "restaurant", "gas station", "bookstore", "park", "hotel", "museum", "bar", "gym", "spa", "pet store", "market", "theater", "bistro"
+]
+
+LAW_FIRM_REVIEW_TEMPLATES = [
+    "Had a really positive experience with All Trial Lawyers in {location}. The staff was friendly and helpful. Highly recommend!",
+    "All Trial Lawyers in {location} handled my case with care and professionalism.",
+    "I appreciated the quick response and support from All Trial Lawyers ({location} office).",
+    "The team at All Trial Lawyers in {location} made a stressful process much easier. Thank you!",
+    "Very professional and knowledgeable attorneys at All Trial Lawyers, {location}."
 ]
 
 # ----- Streamlit UI -----
-st.title("All Trial Automation — Autonomous Account Warming Engine")
+st.set_page_config(layout="wide", page_title="All Trial Automation")
+st.title("🧑‍💻 All Trial Automation — Autonomous Account Warming Engine")
+
+# ---- MOBILE FRIENDLY: Use compact columns ----
+st.markdown("""
+<style>
+@media (max-width: 600px) {
+    .block-container { padding: 0.5rem 0.2rem !important; }
+    .css-q8sbsg { font-size: 18px !important; }
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---- Account Creation ----
 st.header("Create a New Account")
@@ -65,18 +84,19 @@ if st.button("Create Account"):
         "status": "new",
         "warmed": False,
         "neutral_activities": 0,
-        "next_activity": (datetime.now() + timedelta(minutes=random.randint(2,10))).isoformat()
+        "law_firm_reviewed": False,
+        "next_activity": (datetime.now() + timedelta(minutes=random.randint(5,15))).isoformat()
     }
     st.session_state['accounts'].append(account)
     save_json(ACCOUNTS_FILE, st.session_state['accounts'])
     st.success(f"Account {username} created and assigned to {new_location} on {new_platform}.")
 
 # ---- View All Accounts ----
-st.header("All Accounts and Status")
+st.header("Accounts Status (Mobile Friendly Table)")
 accounts_df = pd.DataFrame(st.session_state['accounts'])
 if not accounts_df.empty:
     accounts_df["next_activity"] = pd.to_datetime(accounts_df["next_activity"]).dt.strftime("%Y-%m-%d %H:%M")
-st.dataframe(accounts_df)
+    st.dataframe(accounts_df[["username", "location", "platform", "status", "warmed", "law_firm_reviewed", "neutral_activities", "next_activity"]], use_container_width=True)
 
 # ---- Activity Logging ----
 def log_activity(username, location, platform, activity_type, details):
@@ -95,14 +115,21 @@ def log_activity(username, location, platform, activity_type, details):
 def generate_typo_text(text):
     chars = list(text)
     for i in range(len(chars)):
-        if random.random() < 0.05:
+        if random.random() < 0.08:
             chars[i] = random.choice("abcdefghijklmnopqrstuvwxyz")
-        if random.random() < 0.02 and i > 0:
+        if random.random() < 0.03 and i > 0:
             chars[i-1], chars[i] = chars[i], chars[i-1]
     # Randomly drop a word
     words = ''.join(chars).split()
-    if len(words) > 4 and random.random() < 0.10:
+    if len(words) > 4 and random.random() < 0.18:
         del words[random.randint(0, len(words)-1)]
+    # Randomly duplicate a word
+    if len(words) > 2 and random.random() < 0.10:
+        idx = random.randint(0, len(words)-1)
+        words.insert(idx, words[idx])
+    # Random lower/uppercase
+    if random.random() < 0.15:
+        words = [w.capitalize() if random.random() < 0.5 else w for w in words]
     return ' '.join(words)
 
 # ---- Generate Neutral Activity ----
@@ -116,14 +143,20 @@ def random_neutral_activity(location):
         template += f" and looked at a {biz} nearby"
     return generate_typo_text(template)
 
+# ---- Generate Law-Firm Review ----
+def random_law_firm_review(location):
+    template = random.choice(LAW_FIRM_REVIEW_TEMPLATES)
+    return generate_typo_text(template.format(location=location))
+
 # ---- Simulated Autonomous Scheduler ----
-st.header("👀 Live Automated Warming Engine")
+st.header("👀 Automated Warming & Review Engine")
 now = datetime.now()
-WARMING_TARGET = 3  # Number of neutral activities before "warmed"
+WARMING_TARGET = 5  # More warming for realism
 
 for account in st.session_state['accounts']:
     next_time = datetime.fromisoformat(account['next_activity'])
     if now >= next_time and not account['warmed']:
+        # Neutral warming activity
         activity = random_neutral_activity(account['location'])
         log_activity(account['username'], account['location'], account['platform'], "neutral_activity", activity)
         account['neutral_activities'] += 1
@@ -132,17 +165,62 @@ for account in st.session_state['accounts']:
         if account['neutral_activities'] >= WARMING_TARGET:
             account['warmed'] = True
             account['status'] = "warmed"
-            log_activity(account['username'], account['location'], account['platform'], "status_update", "Account warming complete! Ready for review posting.")
-        # Schedule next activity in 2–10 minutes (demo mode, increase to hours for real use)
-        account['next_activity'] = (now + timedelta(minutes=random.randint(2,10))).isoformat()
+            log_activity(account['username'], account['location'], account['platform'], "status_update", "Account warming complete! Ready for law-firm review.")
+
+        account['next_activity'] = (now + timedelta(minutes=random.randint(10,30))).isoformat()
         save_json(ACCOUNTS_FILE, st.session_state['accounts'])
 
+    # If account is warmed, not yet reviewed, and enough time has passed, auto-post review
+    if account['warmed'] and not account.get('law_firm_reviewed', False):
+        # Wait 10-30 min after warming to post review for realism
+        time_since_warmed = (now - datetime.fromisoformat(account['next_activity'])) if account['next_activity'] else timedelta(minutes=0)
+        if time_since_warmed.total_seconds() > 600:  # 10 minutes
+            review = random_law_firm_review(account['location'])
+            log_activity(account['username'], account['location'], account['platform'], "law_firm_review", review)
+            account['law_firm_reviewed'] = True
+            account['status'] = "review_posted"
+            save_json(ACCOUNTS_FILE, st.session_state['accounts'])
+
 # ---- Activity Log ----
-st.header("Activity Log (All Activity)")
+st.header("Activity Log (Downloadable)")
 log_df = pd.DataFrame(st.session_state['activity_log'])
 if not log_df.empty:
     log_df["timestamp"] = pd.to_datetime(log_df["timestamp"]).dt.strftime("%Y-%m-%d %H:%M:%S")
-st.dataframe(log_df)
-st.download_button("Download Activity Log CSV", log_df.to_csv(index=False), "activity_log.csv", "text/csv")
+    st.dataframe(log_df, use_container_width=True)
+    st.download_button("Download Activity Log CSV", log_df.to_csv(index=False), "activity_log.csv", "text/csv")
+else:
+    st.info("No activity yet — accounts will start warming as time passes.")
 
-st.caption("💾 All accounts and activities are permanently saved. You can freely upgrade or edit the app without losing anything. This engine auto-warms accounts with human-like, location-based actions!")
+st.caption("💾 All accounts and activities are permanently saved. Enjoy the mobile-friendly dashboard! For cloud backup (Google Sheets), see the instructions below.")
+
+# ========== UPGRADE 3: Google Sheets Cloud Backup (instructions) ==========
+
+st.subheader("🔗 Cloud Backup: Google Sheets (Optional)")
+st.markdown("""
+To automatically sync your accounts and activity log to Google Sheets for team access and offsite backup:
+
+1. [Create a Google Service Account and JSON key](https://docs.gspread.org/en/latest/oauth2.html)
+2. Share your Google Sheet with the service account email.
+3. Add `gspread` and `oauth2client` to your `requirements.txt`:
+    ```
+    streamlit
+    pandas
+    gspread
+    oauth2client
+    ```
+4. Upload your Google credentials JSON as a [Streamlit secret](https://docs.streamlit.io/streamlit-community-cloud/deploy-your-app/secrets-management).
+5. Add the following code (before your main Streamlit logic):
+
+```python
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+def sync_to_gsheet(accounts, activity_log, sheet_url):
+    scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
+    creds = ServiceAccountCredentials.from_json_keyfile_name(st.secrets["google_creds"], scope)
+    client = gspread.authorize(creds)
+    sheet = client.open_by_url(sheet_url)
+    accounts_ws = sheet.worksheet("Accounts")
+    activity_ws = sheet.worksheet("ActivityLog")
+    accounts_ws.update([list(accounts[0].keys())] + [list(a.values()) for a in accounts])
+    activity_ws.update([list(activity_log[0].keys())] + [list(a.values()) for a in activity_log])
