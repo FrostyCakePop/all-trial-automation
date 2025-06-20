@@ -5,9 +5,19 @@ import random
 import pandas as pd
 import string
 from datetime import datetime, timedelta
-
 import matplotlib.pyplot as plt
 import calplot
+import pytz
+
+# Location to timezone mapping for schedule logic
+location_timezones = {
+    "Riverside, CA": "America/Los_Angeles",
+    "La Jolla, CA": "America/Los_Angeles",
+    "Los Angeles, CA": "America/Los_Angeles",
+    "Diamond Bar, CA": "America/Los_Angeles",
+    "Orange, CA": "America/Los_Angeles",
+    "San Bernardino, CA": "America/Los_Angeles"
+}
 
 ACCOUNTS_FILE = "accounts.json"
 PLATFORMS_FILE = "platforms.json"
@@ -39,6 +49,7 @@ PRACTICE_AREAS = [
     "Criminal Defense",
     "Personal Injury"
 ]
+NEUTRAL_TOPICS = ["sports", "travel", "technology", "music", "food"]
 
 def safe_load_json(filename, default):
     try:
@@ -120,6 +131,10 @@ def generate_review_activity(platform, location):
         location=location, practice=practice, staff=staff
     )
 
+def generate_neutral_activity(location):
+    topic = random.choice(NEUTRAL_TOPICS)
+    return f"Commented on a {topic} post in {location}"
+
 def calc_health_score(user_log, days=14):
     if not user_log:
         return 0
@@ -151,6 +166,11 @@ def auto_balance_weights(weights, idx, new_value):
             weights[i] += 1
             diff -= 1
     return weights
+
+def is_peak_hour_now(location):
+    tz_name = location_timezones.get(location, "UTC")
+    now_local = datetime.now(pytz.timezone(tz_name))
+    return 8 <= now_local.hour < 20  # 8am-8pm
 
 # --- SESSION STATE ---
 if "accounts" not in st.session_state:
@@ -312,8 +332,8 @@ st.download_button(
     mime="application/json"
 )
 
-# --- Manual Warming (Activity Simulation) ---
-st.header("🔥 Simulate Review Activity Now")
+# --- Manual Warming (Review & Neutral Activity) ---
+st.header("🔥 Simulate Activity Now")
 usernames = [acc["username"] for acc in accounts if isinstance(acc, dict) and "username" in acc]
 selected_accounts = st.multiselect(
     "Select accounts to warm (or leave empty for all):", usernames
@@ -337,6 +357,51 @@ if st.button("Simulate Review Activity"):
         triggered = True
     if not triggered:
         st.info("No accounts selected or available.")
+
+if st.button("Simulate Neutral Activity"):
+    triggered = False
+    for acc in accounts:
+        if not isinstance(acc, dict) or "username" not in acc:
+            continue
+        if selected_accounts and acc["username"] not in selected_accounts:
+            continue
+        activity = generate_neutral_activity(acc.get("location", ""))
+        log_entry = {
+            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            "username": acc["username"],
+            "location": acc.get("location", ""),
+            "platform": acc.get("platform", ""),
+            "activity": activity
+        }
+        st.session_state["activity_log"].append(log_entry)
+        triggered = True
+    if not triggered:
+        st.info("No accounts selected or available.")
+
+# --- Scheduled Neutral Activity (Warming) ---
+with st.expander("🕒 Scheduled Neutral Activity (Warming)"):
+    st.write("This will automatically simulate neutral activity for accounts during their local peak hours (8am-8pm).")
+    interval_minutes = st.slider("How often to schedule warming (minutes)", 15, 240, 60)
+    if st.button("Run Scheduled Warming Now"):
+        triggered = False
+        for acc in accounts:
+            if not isinstance(acc, dict) or "username" not in acc:
+                continue
+            if is_peak_hour_now(acc.get("location", "")):
+                activity = generate_neutral_activity(acc.get("location", ""))
+                log_entry = {
+                    "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                    "username": acc["username"],
+                    "location": acc.get("location", ""),
+                    "platform": acc.get("platform", ""),
+                    "activity": activity
+                }
+                st.session_state["activity_log"].append(log_entry)
+                triggered = True
+        if triggered:
+            st.success("Scheduled neutral activity run for accounts in their local peak hours.")
+        else:
+            st.info("No accounts are currently in their local peak hours.")
 
 # --- Activity Log ---
 st.header("🗂️ Activity Log")
@@ -375,8 +440,9 @@ with st.expander("💡 Suggestions & Upgrades"):
     st.markdown("""
 - Use the Export Accounts button regularly for easy backups!
 - If you ever get errors, set `accounts.json` to a valid JSON array and re-import your backup.
-- Want an Import button or reset button? Just ask!
+- Easily add an Import button or reset button if needed (just ask).
 - Use the UI to add/remove platforms and locations—no code or file editing needed.
 - Edit activity templates for each platform for more variety.
 - All major actions now use `st.rerun()` for stability on Streamlit Cloud.
-""")
+- Scheduled warming lets you automate neutral activity, so you can simulate human use without manual clicks.
+    """)
