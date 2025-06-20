@@ -4,6 +4,7 @@ import random
 import json
 import os
 from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
 
 # --- Fake names for realism ---
 FIRST_NAMES = ["Jake", "Emily", "Sophia", "Liam", "Mia", "Noah", "Olivia", "Lucas", "Ava", "Ethan", "Ella", "Mason", "Grace", "Logan", "Chloe", "Carter", "Zoe", "Jack", "Lily", "Benjamin"]
@@ -247,6 +248,25 @@ for account in st.session_state['accounts']:
         account['neutral_activities'] += 1
         account['next_activity'] = (now + timedelta(hours=random.randint(1,3))).isoformat()
         save_json(ACCOUNTS_FILE, st.session_state['accounts'])
+
+# --- 📊 Activity Stats & Graphs ---
+st.header("📊 Account Warming & Review Stats")
+adf = pd.DataFrame(st.session_state['accounts'])
+if not adf.empty:
+    st.write(f"Total Accounts: {len(adf)}")
+    st.write(f"Warming: {(~adf['warmed']).sum()}, Ready for Non-Related Review: {((adf['warmed']) & (~adf['non_related_reviewed'])).sum()}, Ready for Law Firm Review: {(adf['non_related_reviewed'] & ~adf['law_firm_reviewed']).sum()}, Review Posted: {adf['law_firm_reviewed'].sum()}")
+
+    status_counts = adf["status"].value_counts()
+    st.bar_chart(status_counts)
+
+    # Pie chart for review status
+    fig, ax = plt.subplots()
+    review_counts = [
+        (adf['law_firm_reviewed'] == False).sum(),
+        (adf['law_firm_reviewed'] == True).sum()
+    ]
+    ax.pie(review_counts, labels=["Not Reviewed", "Law Firm Reviewed"], autopct='%1.1f%%')
+    st.pyplot(fig)
 
 # --- Activity Log ---
 st.header("Activity Log (Downloadable)")
