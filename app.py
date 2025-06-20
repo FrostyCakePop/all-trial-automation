@@ -3,22 +3,21 @@ import json
 import os
 import random
 import pandas as pd
+import string
 from datetime import datetime, timedelta
-import threading
-import time
 
-TEMPLATE_FILE = "activity_templates.json"
 ACCOUNTS_FILE = "accounts.json"
+TEMPLATE_FILE = "activity_templates.json"
 
-# ========== ERROR HANDLING HELPERS ==========
+# ========== HELPERS FOR FILES & DATA ==========
 
 def safe_load_json(filename, default):
     try:
         if os.path.exists(filename):
             with open(filename, "r") as f:
                 return json.load(f)
-    except Exception as e:
-        st.warning(f"Failed to load {filename}: {e}")
+    except Exception:
+        pass
     return default
 
 def safe_save_json(filename, data):
@@ -28,37 +27,24 @@ def safe_save_json(filename, data):
     except Exception as e:
         st.warning(f"Failed to save {filename}: {e}")
 
-# ========== TEMPLATE MANAGEMENT ==========
+# ========== DEFAULTS ==========
 
-def load_templates():
-    return safe_load_json(TEMPLATE_FILE, [
-        "Commented on a {topic} post in {location}",
-        "Liked a {topic} article in {location}",
-        "Shared a news update about {topic} in {location}",
-        "Followed a user interested in {topic} in {location}",
-        "Replied to a general discussion on {topic} in {location}"
-    ])
+DEFAULT_PLATFORMS = [
+    "Gmail", "Outlook", "Yahoo", "ProtonMail", "AOL", "Zoho", "iCloud"
+]
 
-def save_templates(templates):
-    safe_save_json(TEMPLATE_FILE, templates)
+DEFAULT_LOCATIONS = [
+    "Dallas", "Chicago", "San Francisco", "London", "New York", "Miami",
+    "Los Angeles", "Seattle", "Houston", "Boston", "Toronto", "Sydney"
+]
 
-def reset_templates():
-    defaults = [
-        "Commented on a {topic} post in {location}",
-        "Liked a {topic} article in {location}",
-        "Shared a news update about {topic} in {location}",
-        "Followed a user interested in {topic} in {location}",
-        "Replied to a general discussion on {topic} in {location}"
-    ]
-    save_templates(defaults)
-    return defaults
-
-def generate_neutral_activity(location, topic="general"):
-    templates = load_templates()
-    if not templates:
-        return "No templates available."
-    template = random.choice(templates)
-    return template.format(topic=topic, location=location)
+DEFAULT_TEMPLATES = [
+    "Commented on a {topic} post in {location}",
+    "Liked a {topic} article in {location}",
+    "Shared a news update about {topic} in {location}",
+    "Followed a user interested in {topic} in {location}",
+    "Replied to a general discussion on {topic} in {location}"
+]
 
 # ========== ACCOUNT MANAGEMENT ==========
 
@@ -67,6 +53,42 @@ def load_accounts():
 
 def save_accounts(accounts):
     safe_save_json(ACCOUNTS_FILE, accounts)
+
+def generate_unique_email(existing_emails, username, platform):
+    base = username
+    domain = {
+        "Gmail": "gmail.com",
+        "Outlook": "outlook.com",
+        "Yahoo": "yahoo.com",
+        "ProtonMail": "protonmail.com",
+        "AOL": "aol.com",
+        "Zoho": "zoho.com",
+        "iCloud": "icloud.com"
+    }.get(platform, "mail.com")
+    email = f"{base}@{domain}"
+    i = 1
+    while email in existing_emails:
+        email = f"{base}{i}@{domain}"
+        i += 1
+    return email
+
+def random_username():
+    return 'user' + ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+
+# ========== ACTIVITY TEMPLATES ==========
+
+def load_templates():
+    return safe_load_json(TEMPLATE_FILE, DEFAULT_TEMPLATES)
+
+def save_templates(templates):
+    safe_save_json(TEMPLATE_FILE, templates)
+
+def generate_neutral_activity(location, topic="general"):
+    templates = load_templates()
+    if not templates:
+        return "No templates available."
+    template = random.choice(templates)
+    return template.format(topic=topic, location=location)
 
 # ========== HEALTH SCORING ==========
 
@@ -79,184 +101,156 @@ def calc_health_score(user_log, days=14):
     active_days = sum([d in date_set for d in last_n])
     return int((active_days / days) * 100)
 
-# ========== AUTOMATION (Background Warming) ==========
+# ========== WEIGHTED SLIDER LOGIC ==========
 
-def run_automation():
-    if st.session_state.get('automating', False):
-        accounts = st.session_state['accounts']
-        topics = ["sports", "travel", "technology", "music", "food"]
-        for idx, acc in enumerate(accounts):
-            if acc.get("paused", False):
-                continue
-            try:
-                topic = random.choice(topics)
-                activity = generate_neutral_activity(acc["location"], topic)
-                log_entry = {
-                    "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                    "username": acc["username"],
-                    "location": acc["location"],
-                    "activity": activity,
-                    "topic": topic
-                }
-                st.session_state['activity_log'].append(log_entry)
-                # Optional: update last activity time for health scoring
-                acc['last_activity'] = log_entry["timestamp"]
-            except Exception as e:
-                st.warning(f"Automation failed for {acc.get('username', 'unknown')}: {e}")
+def auto_balance_weights(weights, idx, new_value):
+    n = len(weights)
+    if n <= 1:
+        return weights
+    total_other = sum(weights) - weights[idx]
+    remaining = 100 - new_value
+    if remaining < 0:
+        remaining = 0
+    if n - 1 == 0:
+        return [new_value] * n
+    # Spread remaining evenly among others
+    if total_other == 0:
+        for i in range(n):
+            if i != idx:
+                weights[i] = remaining // (n-1)
+        weights[idx] = new_value
+        return weights
+    for i in range(n):
+        if i != idx:
+            weights[i] = int(remaining / (n-1))
+    # fix rounding
+    weights[idx] = new_value
+    diff = 100 - sum(weights)
+    for i in range(n):
+        if diff == 0:
+            break
+        if i != idx:
+            weights[i] += 1
+            diff -= 1
+    return weights
+
+# ========== SESSION STATE ==========
+
+if "accounts" not in st.session_state:
+    st.session_state["accounts"] = load_accounts()
+
+if "activity_log" not in st.session_state:
+    st.session_state["activity_log"] = []
+
+# Remember platform/location weights in session
+if "platforms" not in st.session_state:
+    st.session_state["platforms"] = DEFAULT_PLATFORMS.copy()
+if "locations" not in st.session_state:
+    st.session_state["locations"] = DEFAULT_LOCATIONS.copy()
+if "platform_weights" not in st.session_state:
+    st.session_state["platform_weights"] = [int(100/len(DEFAULT_PLATFORMS))]*len(DEFAULT_PLATFORMS)
+if "location_weights" not in st.session_state:
+    st.session_state["location_weights"] = [int(100/len(DEFAULT_LOCATIONS))]*len(DEFAULT_LOCATIONS)
+
+accounts = st.session_state["accounts"]
+
+# ========== UI START ==========
+
+st.title("Automated Account Generator & Warming App")
+
+# --- Platform and Location Weights ---
+with st.expander("🎛️ Platform & Location Weighting", expanded=True):
+    st.markdown("#### Email Platform Weights (totals 100%)")
+    cols = st.columns(len(st.session_state["platforms"]))
+    for idx, (col, plat) in enumerate(zip(cols, st.session_state["platforms"])):
+        with col:
+            val = st.slider(
+                plat,
+                0, 100,
+                st.session_state["platform_weights"][idx],
+                key=f"platform_weight_{plat}"
+            )
+            if val != st.session_state["platform_weights"][idx]:
+                st.session_state["platform_weights"] = auto_balance_weights(
+                    st.session_state["platform_weights"], idx, val
+                )
+    st.write("Current Platform Weights:", dict(zip(st.session_state["platforms"], st.session_state["platform_weights"])))
+
+    st.markdown("#### Location Weights (totals 100%)")
+    cols2 = st.columns(len(st.session_state["locations"]))
+    for idx, (col, loc) in enumerate(zip(cols2, st.session_state["locations"])):
+        with col:
+            val = st.slider(
+                loc,
+                0, 100,
+                st.session_state["location_weights"][idx],
+                key=f"location_weight_{loc}"
+            )
+            if val != st.session_state["location_weights"][idx]:
+                st.session_state["location_weights"] = auto_balance_weights(
+                    st.session_state["location_weights"], idx, val
+                )
+    st.write("Current Location Weights:", dict(zip(st.session_state["locations"], st.session_state["location_weights"])))
+
+# --- Automated Account Generation ---
+with st.expander("✨ Generate Accounts Automatically", expanded=True):
+    num_to_generate = st.number_input("Number of accounts to generate", min_value=1, max_value=30, value=5)
+    if st.button("Generate Accounts"):
+        # Weighted random choice for platforms/locations
+        plats, plat_weights = st.session_state["platforms"], st.session_state["platform_weights"]
+        locs, loc_weights = st.session_state["locations"], st.session_state["location_weights"]
+        plat_choices = random.choices(plats, weights=plat_weights, k=num_to_generate)
+        loc_choices = random.choices(locs, weights=loc_weights, k=num_to_generate)
+        existing_emails = {a["email"] for a in accounts}
+        for i in range(num_to_generate):
+            username = random_username()
+            platform = plat_choices[i]
+            location = loc_choices[i]
+            email = generate_unique_email(existing_emails, username, platform)
+            existing_emails.add(email)
+            accounts.append({
+                "username": username,
+                "email": email,
+                "platform": platform,
+                "location": location,
+                "paused": False,
+                "health": 100
+            })
         save_accounts(accounts)
-        time.sleep(st.session_state.get('automation_interval', 90))  # default: every 90 seconds
+        st.success(f"{num_to_generate} accounts generated and added!")
+        st.experimental_rerun()
 
-def automation_loop():
-    while st.session_state.get('automating', False):
-        run_automation()
-
-# ========== SESSION STATE INIT ==========
-
-if 'accounts' not in st.session_state:
-    st.session_state['accounts'] = load_accounts()
-if 'activity_log' not in st.session_state:
-    st.session_state['activity_log'] = []
-if 'automating' not in st.session_state:
-    st.session_state['automating'] = False
-if 'automation_thread' not in st.session_state:
-    st.session_state['automation_thread'] = None
-if 'automation_interval' not in st.session_state:
-    st.session_state['automation_interval'] = 90  # seconds
-
-accounts = st.session_state['accounts']
-
-# ========== MAIN UI ==========
-
-st.title("Account Warming & Activity Automation Dashboard")
-
-# --- ACTIVITY TEMPLATE MANAGEMENT ---
-with st.expander("📝 Manage Activity Templates", expanded=False):
-    templates = load_templates()
-    edited_templates = st.text_area(
-        "Edit your activity templates (one per line):",
-        value="\n".join(templates),
-        height=150
-    )
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Save Templates"):
-            new_templates = [line.strip() for line in edited_templates.splitlines() if line.strip()]
-            save_templates(new_templates)
-            st.success("Templates saved! (Will be used for future activities.)")
-    with c2:
-        if st.button("Reset to Defaults"):
-            defaults = reset_templates()
-            st.success("Templates reset to default values.")
-            st.experimental_rerun()
-
-# --- ACCOUNT MANAGEMENT UI ---
+# --- Account Table & Health ---
 st.header("👤 Accounts")
-
-add_user, edit_user, del_user = st.columns(3)
-with add_user:
-    st.subheader("Add Account")
-    with st.form("AddAccount"):
-        new_username = st.text_input("Username", key="add_username")
-        new_location = st.text_input("Location", key="add_location")
-        submitted = st.form_submit_button("Add")
-        if submitted:
-            if not new_username or not new_location:
-                st.error("Username and location are required.")
-            elif any(acc["username"] == new_username for acc in accounts):
-                st.error("Username already exists.")
-            else:
-                accounts.append({"username": new_username, "location": new_location, "paused": False})
-                save_accounts(accounts)
-                st.success(f"Account {new_username} added.")
-                st.experimental_rerun()
-with edit_user:
-    st.subheader("Edit Account")
-    usernames = [acc["username"] for acc in accounts]
-    if usernames:
-        selected_edit = st.selectbox("Select account", usernames, key="edit_select")
-        acc = next((a for a in accounts if a["username"] == selected_edit), None)
-        if acc:
-            new_loc = st.text_input("New Location", value=acc["location"], key="edit_location")
-            paused = st.checkbox("Paused", value=acc.get("paused", False), key="edit_paused")
-            if st.button("Update Account"):
-                acc["location"] = new_loc
-                acc["paused"] = paused
-                save_accounts(accounts)
-                st.success("Account updated.")
-                st.experimental_rerun()
-with del_user:
-    st.subheader("Delete Account")
-    if usernames:
-        selected_del = st.selectbox("Delete which account?", usernames, key="del_select")
-        if st.button("Delete Account"):
-            accounts[:] = [a for a in accounts if a["username"] != selected_del]
-            save_accounts(accounts)
-            st.success(f"Account {selected_del} deleted.")
-            st.experimental_rerun()
-
-# --- ACCOUNT TABLE + HEALTH ---
-st.markdown("### All Accounts and Health")
 if accounts:
-    log_df = pd.DataFrame(st.session_state['activity_log'])
+    log_df = pd.DataFrame(st.session_state["activity_log"])
     show = []
     for acc in accounts:
         user_log = log_df[log_df["username"] == acc["username"]].to_dict("records") if not log_df.empty else []
         health = calc_health_score(user_log)
-        badge_color = "#4CAF50" if health > 80 else "#FFC107" if health > 50 else "#f44336"
+        acc["health"] = health
         show.append({
+            "Email": acc["email"],
             "Username": acc["username"],
+            "Platform": acc["platform"],
             "Location": acc["location"],
             "Paused": acc.get("paused", False),
-            "Health Score": f"{health}%",
-            "Health Color": badge_color
+            "Health Score": f"{health}%"
         })
-    health_df = pd.DataFrame(show)
-    # Style health color
-    def color_health(val, color):
-        return f"background-color: {color}" if isinstance(val, str) and "%" in val else ""
-    st.dataframe(
-        health_df[["Username", "Location", "Paused", "Health Score"]],
-        use_container_width=True,
-        hide_index=True
-    )
+    df = pd.DataFrame(show)
+    st.dataframe(df, use_container_width=True, hide_index=True)
 else:
-    st.info("No accounts yet.")
+    st.info("No accounts yet. Generate some above!")
 
-# --- AUTOMATION CONTROLS ---
-st.header("🤖 True Automation")
-
-st.write(f"Automation interval: {st.session_state['automation_interval']} seconds")
-auto_cols = st.columns([1,1,2])
-with auto_cols[0]:
-    if st.button("Start Automation"):
-        if not st.session_state['automating']:
-            st.session_state['automating'] = True
-            if not st.session_state['automation_thread'] or not st.session_state['automation_thread'].is_alive():
-                t = threading.Thread(target=automation_loop, daemon=True)
-                st.session_state['automation_thread'] = t
-                t.start()
-            st.success("Automation started. Accounts will warm in the background.")
-with auto_cols[1]:
-    if st.button("Stop Automation"):
-        st.session_state['automating'] = False
-        st.success("Automation stopped.")
-with auto_cols[2]:
-    interval = st.number_input(
-        "Set automation interval (seconds):",
-        min_value=20, max_value=600, value=st.session_state['automation_interval'], step=10
-    )
-    if interval != st.session_state['automation_interval']:
-        st.session_state['automation_interval'] = int(interval)
-        st.success("Automation interval updated.")
-
-# --- MANUAL ACTIVITY (OPTIONAL) ---
+# --- Manual Warming (Activity Simulation) ---
 st.header("🔥 Simulate Activity Now")
+usernames = [acc["username"] for acc in accounts]
 selected_accounts = st.multiselect(
-    "Select accounts to warm (or leave empty for all):",
-    [acc["username"] for acc in accounts]
+    "Select accounts to warm (or leave empty for all):", usernames
 )
 topics = ["sports", "travel", "technology", "music", "food"]
 selected_topic = st.selectbox("Select a topic for activity:", topics + ["random"])
+
 if st.button("Simulate Neutral Activity"):
     triggered = False
     for acc in accounts:
@@ -271,18 +265,15 @@ if st.button("Simulate Neutral Activity"):
             "activity": activity,
             "topic": topic
         }
-        st.session_state['activity_log'].append(log_entry)
-        acc["last_activity"] = log_entry["timestamp"]
-        save_accounts(accounts)
-        st.success(f"{acc['username']} - {activity}")
+        st.session_state["activity_log"].append(log_entry)
         triggered = True
     if not triggered:
         st.info("No accounts selected or available.")
 
-# --- ACTIVITY LOG ---
+# --- Activity Log ---
 st.header("🗂️ Activity Log")
-if st.session_state['activity_log']:
-    log_df = pd.DataFrame(st.session_state['activity_log'])
+if st.session_state["activity_log"]:
+    log_df = pd.DataFrame(st.session_state["activity_log"])
     st.dataframe(log_df, use_container_width=True, hide_index=True)
     csv = log_df.to_csv(index=False)
     st.download_button(
@@ -294,13 +285,14 @@ if st.session_state['activity_log']:
 else:
     st.info("No activities logged yet.")
 
-# --- HELP & SUGGESTIONS ---
+# --- Suggestions ---
 with st.expander("💡 Suggestions & Upgrades"):
     st.markdown("""
-- **Health scoring**: Green = healthy, Yellow = moderate, Red = low. Try to keep all accounts green!
-- **Background automation**: App will auto-warm accounts on a timer. Adjust the interval as needed.
-- **Full UI management**: Add, edit, delete accounts without any code.
-- **Error handling**: The app will not crash if a file is missing or data is bad—just a friendly warning.
-- **Activity templates**: Expand your neutral actions for even more realism.
-- **Upgrade ideas**: Add calendar heatmaps, per-account review, or GitHub/Sheets data storage for backups. Want these? Just ask!
+- **Calendar heatmap:** Visualize daily account activity.
+- **Bulk import/export:** Upload/download accounts as CSV.
+- **Per-platform templates:** Customize neutral actions by platform.
+- **Activity scheduler:** Automate warming by timezone/activity hours.
+- **Persistent activity log:** Save all logs to disk or GitHub for backup.
+- **Advanced health metrics:** Score on more than just days active.
+Want any of these? Just ask!
 """)
