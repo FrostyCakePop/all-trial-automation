@@ -10,40 +10,30 @@ import matplotlib.pyplot as plt
 import calplot
 
 ACCOUNTS_FILE = "accounts.json"
+PLATFORMS_FILE = "platforms.json"
+LOCATIONS_FILE = "locations.json"
 TEMPLATE_FILE = "activity_templates.json"
 
-DEFAULT_PLATFORMS = [
-    "Gmail", "Outlook", "Yahoo", "ProtonMail", "AOL", "Zoho", "iCloud"
-]
-
-DEFAULT_LOCATIONS = [
-    "Dallas", "Chicago", "San Francisco", "London", "New York", "Miami",
-    "Los Angeles", "Seattle", "Houston", "Boston", "Toronto", "Sydney"
-]
-
 DEFAULT_TEMPLATES = {
-    "Gmail": [
+    "Google": [
         "Commented on a {topic} post in {location}",
         "Liked a {topic} article in {location}"
     ],
-    "Outlook": [
+    "Facebook": [
         "Shared a news update about {topic} in {location}",
         "Followed a user interested in {topic} in {location}"
     ],
-    "Yahoo": [
+    "Yelp": [
         "Replied to a general discussion on {topic} in {location}"
     ],
-    "ProtonMail": [
-        "Browsed emails about {topic} in {location}"
+    "Avvo": [
+        "Browsed questions about {topic} in {location}"
     ],
-    "AOL": [
-        "Forwarded a {topic} news item in {location}"
+    "FindLaw": [
+        "Forwarded a {topic} blog post in {location}"
     ],
-    "Zoho": [
-        "Starred a {topic} email in {location}"
-    ],
-    "iCloud": [
-        "Organized {topic} emails in {location}"
+    "Lawyers.com": [
+        "Starred a {topic} firm in {location}"
     ]
 }
 
@@ -69,6 +59,44 @@ def load_accounts():
 def save_accounts(accounts):
     safe_save_json(ACCOUNTS_FILE, accounts)
 
+def load_platforms():
+    return safe_load_json(PLATFORMS_FILE, ["Google", "Facebook", "Yelp", "Avvo", "FindLaw", "Lawyers.com"])
+
+def save_platforms(platforms):
+    safe_save_json(PLATFORMS_FILE, platforms)
+
+def load_locations():
+    return safe_load_json(LOCATIONS_FILE, [
+      "Los Angeles, CA",
+      "Santa Ana, CA",
+      "Riverside, CA",
+      "San Diego, CA",
+      "Pasadena, CA",
+      "Long Beach, CA",
+      "Glendale, CA",
+      "Santa Monica, CA",
+      "Anaheim, CA",
+      "Irvine, CA",
+      "Fullerton, CA",
+      "Huntington Beach, CA",
+      "Costa Mesa, CA",
+      "Burbank, CA",
+      "Downey, CA",
+      "Torrance, CA",
+      "San Bernardino, CA",
+      "West Covina, CA",
+      "Garden Grove, CA",
+      "Ontario, CA",
+      "Pomona, CA",
+      "Rancho Cucamonga, CA",
+      "Fontana, CA",
+      "Corona, CA",
+      "Moreno Valley, CA"
+    ])
+
+def save_locations(locations):
+    safe_save_json(LOCATIONS_FILE, locations)
+
 def load_templates():
     return safe_load_json(TEMPLATE_FILE, DEFAULT_TEMPLATES)
 
@@ -77,15 +105,7 @@ def save_templates(templates):
 
 def generate_unique_email(existing_emails, username, platform):
     base = username
-    domain = {
-        "Gmail": "gmail.com",
-        "Outlook": "outlook.com",
-        "Yahoo": "yahoo.com",
-        "ProtonMail": "protonmail.com",
-        "AOL": "aol.com",
-        "Zoho": "zoho.com",
-        "iCloud": "icloud.com"
-    }.get(platform, "mail.com")
+    domain = platform.replace(".", "").replace(" ", "").lower() + ".com"
     email = f"{base}@{domain}"
     i = 1
     while email in existing_emails:
@@ -100,7 +120,6 @@ def generate_neutral_activity(platform, location, topic="general"):
     templates = load_templates()
     platform_templates = templates.get(platform, [])
     if not platform_templates:
-        # fallback to all templates
         all_templates = []
         for vals in templates.values():
             all_templates.extend(vals)
@@ -143,22 +162,64 @@ def auto_balance_weights(weights, idx, new_value):
             diff -= 1
     return weights
 
+# --- SESSION STATE ---
 if "accounts" not in st.session_state:
     st.session_state["accounts"] = load_accounts()
 if "activity_log" not in st.session_state:
     st.session_state["activity_log"] = []
 if "platforms" not in st.session_state:
-    st.session_state["platforms"] = DEFAULT_PLATFORMS.copy()
+    st.session_state["platforms"] = load_platforms()
 if "locations" not in st.session_state:
-    st.session_state["locations"] = DEFAULT_LOCATIONS.copy()
+    st.session_state["locations"] = load_locations()
 if "platform_weights" not in st.session_state:
-    st.session_state["platform_weights"] = [int(100/len(DEFAULT_PLATFORMS))]*len(DEFAULT_PLATFORMS)
+    st.session_state["platform_weights"] = [int(100/len(st.session_state["platforms"]))]*len(st.session_state["platforms"])
 if "location_weights" not in st.session_state:
-    st.session_state["location_weights"] = [int(100/len(DEFAULT_LOCATIONS))]*len(DEFAULT_LOCATIONS)
+    st.session_state["location_weights"] = [int(100/len(st.session_state["locations"]))]*len(st.session_state["locations"])
 
 accounts = st.session_state["accounts"]
 
-st.title("Account Generator & Warming App with Calendar Heatmaps & Per-Platform Templates")
+st.title("All Trial Lawyers Account Generator & Warming App")
+
+# --- Add Platforms/Locations UI ---
+with st.expander("➕ Add/Remove Platforms & Locations", expanded=True):
+    st.subheader("Platforms")
+    new_platform = st.text_input("Add a new platform", key="new_platform")
+    if st.button("Add Platform"):
+        if new_platform and new_platform not in st.session_state["platforms"]:
+            st.session_state["platforms"].append(new_platform)
+            save_platforms(st.session_state["platforms"])
+            st.session_state["platform_weights"] = [int(100/len(st.session_state["platforms"]))]*len(st.session_state["platforms"])
+            st.success(f"Platform '{new_platform}' added!")
+            st.experimental_rerun()
+    del_platform = st.selectbox("Remove a platform", st.session_state["platforms"], key="del_platform")
+    if st.button("Remove Platform"):
+        st.session_state["platforms"].remove(del_platform)
+        save_platforms(st.session_state["platforms"])
+        if del_platform in DEFAULT_TEMPLATES:
+            templates = load_templates()
+            if del_platform in templates:
+                del templates[del_platform]
+                save_templates(templates)
+        st.session_state["platform_weights"] = [int(100/len(st.session_state["platforms"]))]*len(st.session_state["platforms"])
+        st.success(f"Platform '{del_platform}' removed!")
+        st.experimental_rerun()
+
+    st.subheader("Locations")
+    new_location = st.text_input("Add a new location", key="new_location")
+    if st.button("Add Location"):
+        if new_location and new_location not in st.session_state["locations"]:
+            st.session_state["locations"].append(new_location)
+            save_locations(st.session_state["locations"])
+            st.session_state["location_weights"] = [int(100/len(st.session_state["locations"]))]*len(st.session_state["locations"])
+            st.success(f"Location '{new_location}' added!")
+            st.experimental_rerun()
+    del_location = st.selectbox("Remove a location", st.session_state["locations"], key="del_location")
+    if st.button("Remove Location"):
+        st.session_state["locations"].remove(del_location)
+        save_locations(st.session_state["locations"])
+        st.session_state["location_weights"] = [int(100/len(st.session_state["locations"]))]*len(st.session_state["locations"])
+        st.success(f"Location '{del_location}' removed!")
+        st.experimental_rerun()
 
 # --- Per-Platform Template Management ---
 with st.expander("📝 Per-Platform Activity Templates", expanded=False):
@@ -175,7 +236,7 @@ with st.expander("📝 Per-Platform Activity Templates", expanded=False):
 
 # --- Platform/Location Weights ---
 with st.expander("🎛️ Platform & Location Weighting", expanded=True):
-    st.markdown("#### Email Platform Weights (totals 100%)")
+    st.markdown("#### Platform Weights (totals 100%)")
     cols = st.columns(len(st.session_state["platforms"]))
     for idx, (col, plat) in enumerate(zip(cols, st.session_state["platforms"])):
         with col:
@@ -308,7 +369,6 @@ if accounts and st.session_state["activity_log"]:
     selected_acc = st.selectbox("Choose account to view calendar:", acc_names)
     acc_log = log_df[log_df["username"] == selected_acc]
     if not acc_log.empty:
-        # Count activities per day
         acc_log['date'] = pd.to_datetime(acc_log['timestamp']).dt.date
         daily_counts = acc_log.groupby('date').size()
         fig, ax = calplot.calplot(daily_counts, cmap="YlGn", colorbar=True, suptitle=f"Activity Calendar for {selected_acc}")
@@ -321,8 +381,9 @@ else:
 # --- Suggestions ---
 with st.expander("💡 Suggestions & Upgrades"):
     st.markdown("""
+- **Easily manage your platforms and locations from the UI—no file editing needed!**
+- **Per-platform templates:** Each review platform has its own realistic activity list.
 - **Calendar heatmap:** Visualizes daily account activity.
-- **Per-platform templates:** Each platform has its own neutral activity list.
 - **Bulk import/export:** Upload/download accounts as CSV.
 - **Activity scheduler:** Automate warming by timezone/activity hours.
 - **Persistent activity log:** Save all logs to disk or GitHub for backup.
